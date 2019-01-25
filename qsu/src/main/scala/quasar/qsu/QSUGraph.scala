@@ -24,7 +24,7 @@ import quasar.contrib.scalaz._
 import quasar.contrib.scalaz.MonadState_
 import quasar.fp._
 import quasar.fp.ski.κ
-import quasar.qscript.{FreeMapA, OnUndefined, RecFreeMap}
+import quasar.qscript.{FreeMapA, OnUndefined, RecFreeMap, RecFreeMapA}
 
 import monocle.macros.Lenses
 import matryoshka._
@@ -484,7 +484,7 @@ object QSUGraph extends QSUGraphInstances {
     }
 
     object Map {
-      def unapply[T[_[_]]](g: QSUGraph[T]) = g.unfold match {
+      def unapply[T[_[_]]](g: QSUGraph[T]): Option[(QSUGraph[T], RecFreeMapA[T, Access[Hole]])] = g.unfold match {
         case g: QSU.Map[T, QSUGraph[T]] => QSU.Map.unapply(g)
         case _ => None
       }
@@ -644,11 +644,11 @@ object QSUGraph extends QSUGraphInstances {
 
     // TODO doesn't guarantee only one function; could be more!
     object FMFC1 {
-      def unapply[T[_[_]]](fm: RecFreeMap[T])(
-          implicit IC: MapFuncCore[T, ?] :<<: MapFunc[T, ?]): Option[MapFuncCore[T, Hole]] = {
+      def unapply[T[_[_]]](fm: RecFreeAccess[T])(
+          implicit IC: MapFuncCore[T, ?] :<<: MapFunc[T, ?]): Option[MapFuncCore[T, Access[Hole]]] = {
 
         fm.linearize.resume.swap.toOption collect {
-          case IC(mfc) => mfc.map(_ => SrcHole: Hole)
+          case IC(mfc) => mfc.map(κ(Access.value(SrcHole: Hole)))
         }
       }
     }

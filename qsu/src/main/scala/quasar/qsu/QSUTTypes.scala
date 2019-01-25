@@ -21,10 +21,13 @@ import quasar.qscript.TTypes
 trait QSUTTypes[T[_[_]]] extends TTypes[T] {
   type QAuth = quasar.qsu.QAuth[T]
   type QDims = quasar.qsu.QDims[T]
-  type FreeAccess[A] = quasar.qsu.FreeAccess[T, A]
   type QSUGraph = quasar.qsu.QSUGraph[T]
   type RevIdx = quasar.qsu.QSUGraph.RevIdx[T]
   type RevIdxM[F[_]] = quasar.qsu.RevIdxM[T, F]
   type References = quasar.qsu.References[T]
   type QScriptUniform[A] = quasar.qsu.QScriptUniform[T, A]
+  type FreeAccessA[A] = quasar.qsu.FreeAccessA[T, A]
+  type FreeAccess = quasar.qsu.FreeAccess[T]
+  type RecFreeAccessA[A] = quasar.qsu.RecFreeAccessA[T, A]
+  type RecFreeAccess = quasar.qsu.RecFreeAccess[T]
 }

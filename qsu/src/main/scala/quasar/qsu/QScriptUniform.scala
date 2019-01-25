@@ -43,6 +43,7 @@ import scalaz.std.list._
 import scalaz.std.tuple._
 import scalaz.syntax.equal._
 import scalaz.syntax.show._
+import scalaz.syntax.traverse._
 import scalaz.syntax.std.option._
 
 sealed trait QScriptUniform[T[_[_]], A] extends Product with Serializable
@@ -300,7 +301,7 @@ object QScriptUniform {
 
   final case class Map[T[_[_]], A](
       source: A,
-      fm: RecFreeMap[T]) extends QScriptUniform[T, A]
+      fm: RecFreeMapA[T, Access[Hole]]) extends QScriptUniform[T, A]
 
   // LPish
   final case class LPRead[T[_[_]], A](
@@ -566,8 +567,8 @@ object QScriptUniform {
         case Unary(a, mf) => (a, mf)
       } { case (a, mf) => Unary(a, mf) }
 
-    def map[A]: Prism[QScriptUniform[A], (A, RecFreeMap)] =
-      Prism.partial[QScriptUniform[A], (A, RecFreeMap)] {
+    def map[A]: Prism[QScriptUniform[A], (A, RecFreeAccess)] =
+      Prism.partial[QScriptUniform[A], (A, RecFreeAccess)] {
         case Map(a, fm) => (a, fm)
       } { case (a, fm) => Map(a, fm) }
 
@@ -581,13 +582,13 @@ object QScriptUniform {
         case QSFilter(a, p) => (a, p)
       } { case (a, p) => QSFilter(a, p) }
 
-    def qsReduce[A]: Prism[QScriptUniform[A], (A, List[FreeAccess[Hole]], List[ReduceFunc[FreeMap]], FreeMapA[ReduceIndex])] =
-      Prism.partial[QScriptUniform[A], (A, List[FreeAccess[Hole]], List[ReduceFunc[FreeMap]], FreeMapA[ReduceIndex])] {
+    def qsReduce[A]: Prism[QScriptUniform[A], (A, List[FreeAccess], List[ReduceFunc[FreeMap]], FreeMapA[ReduceIndex])] =
+      Prism.partial[QScriptUniform[A], (A, List[FreeAccess], List[ReduceFunc[FreeMap]], FreeMapA[ReduceIndex])] {
         case QSReduce(a, bs, rfs, rep) => (a, bs, rfs, rep)
       } { case (a, bs, rfs, rep) => QSReduce(a, bs, rfs, rep) }
 
-    def qsSort[A]: Prism[QScriptUniform[A], (A, List[FreeAccess[Hole]], NEL[(FreeMap, SortDir)])] =
-      Prism.partial[QScriptUniform[A], (A, List[FreeAccess[Hole]], NEL[(FreeMap, SortDir)])] {
+    def qsSort[A]: Prism[QScriptUniform[A], (A, List[FreeAccess], NEL[(FreeMap, SortDir)])] =
+      Prism.partial[QScriptUniform[A], (A, List[FreeAccess], NEL[(FreeMap, SortDir)])] {
         case QSSort(a, buckets, keys) => (a, buckets, keys)
       } { case (a, buckets, keys) => QSSort(a, buckets, keys) }
 
@@ -725,13 +726,12 @@ object QScriptUniform {
     def unary: Prism[A, F[(A, MapFunc[Hole])]] =
       composeLifting[(?, MapFunc[Hole])](O.unary[A])
 
-    def map: Prism[A, F[(A, RecFreeMap)]] =
-      composeLifting[(?, RecFreeMap)](O.map[A])
+    def map: Prism[A, F[(A, RecFreeAccess)]] =
+      composeLifting[(?, RecFreeAccess)](O.map[A])
 
-    def map1(pair: F[(A, MapFuncCore[Hole])]): A =
-      map(pair.map {
-        case(src, f) => (src, RecFreeS.roll(mfc(f.as(recFunc.Hole))))
-      })
+    def map1(pair: F[(A, MapFuncCore[Access[Hole]])]): A =
+      // from top to bottom: mapping F, mapping tuple, mapping MapFuncCore, traversing Access
+      map(pair map (_ map { f => RecFreeS.roll(mfc(f.map (_.traverse(κ(recFunc.Hole))))) } ))
 
     def qsAutoJoin: Prism[A, F[(A, A, JoinKeys[IdAccess], JoinFunc)]] = {
       type G[A] = (A, A, JoinKeys[IdAccess], JoinFunc)
@@ -741,11 +741,11 @@ object QScriptUniform {
     def qsFilter: Prism[A, F[(A, RecFreeMap)]] =
       composeLifting[(?, RecFreeMap)](O.qsFilter[A])
 
-    def qsReduce: Prism[A, F[(A, List[FreeAccess[Hole]], List[ReduceFunc[FreeMap]], FreeMapA[ReduceIndex])]] =
-      composeLifting[(?, List[FreeAccess[Hole]], List[ReduceFunc[FreeMap]], FreeMapA[ReduceIndex])](O.qsReduce[A])
+    def qsReduce: Prism[A, F[(A, List[FreeAccess], List[ReduceFunc[FreeMap]], FreeMapA[ReduceIndex])]] =
+      composeLifting[(?, List[FreeAccess], List[ReduceFunc[FreeMap]], FreeMapA[ReduceIndex])](O.qsReduce[A])
 
-    def qsSort: Prism[A, F[(A, List[FreeAccess[Hole]], NEL[(FreeMap, SortDir)])]] =
-      composeLifting[(?, List[FreeAccess[Hole]], NEL[(FreeMap, SortDir)])](O.qsSort[A])
+    def qsSort: Prism[A, F[(A, List[FreeAccess], NEL[(FreeMap, SortDir)])]] =
+      composeLifting[(?, List[FreeAccess], NEL[(FreeMap, SortDir)])](O.qsSort[A])
 
     def lpRead: Prism[A, F[AFile]] = {
       type G[_] = AFile
@@ -803,13 +803,13 @@ object QScriptUniform {
     val undefined: Prism[T[QSU], Unit] =
       Prism[T[QSU], Unit](map.getOption(_) collect {
         case (Unreferenced(), Embed(CoEnv(\/-(Suspend(MFC(MapFuncsCore.Undefined())))))) => ()
-      })(_ => map(unreferenced(), recFunc.Undefined[Hole]))
+      })(_ => map(unreferenced(), recFunc.Undefined[Access[Hole]]))
 
     // constants
     val constant: Prism[T[QSU], T[EJson]] =
       Prism[T[QSU], T[EJson]](map.getOption(_) collect {
         case (Unreferenced(), Embed(CoEnv(\/-(Suspend(MFC(MapFuncsCore.Constant(ejs))))))) => ejs
-      })(ejs => map(unreferenced(), recFunc.Constant[Hole](ejs)))
+      })(ejs => map(unreferenced(), recFunc.Constant[Access[Hole]](ejs)))
 
     val carr: Prism[T[QSU], List[T[EJson]]] =
       constant composePrism J.arr

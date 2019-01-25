@@ -31,7 +31,10 @@ import scalaz.syntax.traverse._
 import scalaz.syntax.show._
 
 package object qsu {
-  type FreeAccess[T[_[_]], A] = FreeMapA[T, Access[A]]
+  type FreeAccessA[T[_[_]], A] = FreeMapA[T, Access[A]]
+  type FreeAccess[T[_[_]]] = FreeAccessA[T, Hole]
+  type RecFreeAccessA[T[_[_]], A] = RecFreeMapA[T, Access[A]]
+  type RecFreeAccess[T[_[_]]] = RecFreeAccessA[T, Hole]
   type QDims[T[_[_]]] = Dimensions[QProv.P[T]]
   type QSUVerts[T[_[_]]] = SMap[Symbol, QScriptUniform[T, Symbol]]
 
@@ -50,10 +53,10 @@ package object qsu {
   def AccessLeftTarget[T[_[_]]](f: Hole => Access[Hole]): FreeMapA[T, ShiftTarget] =
     Free.pure(ShiftTarget.AccessLeftTarget(f(SrcHole)))
 
-  def AccessValueF[T[_[_]], A](a: A): FreeAccess[T, A] =
+  def AccessValueF[T[_[_]], A](a: A): FreeAccessA[T, A] =
     Free.pure[MapFunc[T, ?], Access[A]](Access.Value(a))
 
-  def AccessValueHoleF[T[_[_]]]: FreeAccess[T, Hole] =
+  def AccessValueHoleF[T[_[_]]]: FreeAccessA[T, Hole] =
     AccessValueF[T, Hole](SrcHole)
 
   def freshSymbol[F[_]: NameGenerator: Functor](prefix: String): F[Symbol] =

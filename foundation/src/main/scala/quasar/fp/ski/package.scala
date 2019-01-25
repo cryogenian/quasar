@@ -36,6 +36,9 @@ package object ski extends Serializable {
   def κ3[A, B, C, D](x: D): (A, B, C) => D                   = (_, _, _) => x
   def κ6[A, B, C, D, E, F, G](x: G): (A, B, C, D, E, F) => G = (_, _, _, _, _, _) => x
 
+
+
   /** A shorter name for the identity function. */
   def ι[A]: A => A = x => x
+
 }
