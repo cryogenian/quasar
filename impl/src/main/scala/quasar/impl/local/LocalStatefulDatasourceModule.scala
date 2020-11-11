@@ -44,7 +44,7 @@ import java.util.UUID
 object LocalStatefulDatasourceModule extends LightweightDatasourceModule with LocalDestinationModule {
   val kind: DatasourceType = LocalStatefulType
 
-  def sanitizeConfig(config: Json): Json = config
+  def sanitizeConfig(version: Long, config: Json): Json = config
 
   def migrateConfig[F[_]: Sync](from: Long, to: Long, config: Json)
       : F[Either[ConfigurationError[Json], Json]] = {
@@ -56,7 +56,7 @@ object LocalStatefulDatasourceModule extends LightweightDatasourceModule with Lo
   }
 
   // there are no sensitive components, so we use the entire patch
-  def reconfigure(original: Json, patch: Json)
+  def reconfigure(version: Long, original: Json, patch: Json)
       : Either[ConfigurationError[Json], (Reconfiguration, Json)] =
     Right((Reconfiguration.Preserve, patch))
 

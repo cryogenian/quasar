@@ -23,6 +23,8 @@ import scalaz.std.tuple._
 import scalaz.syntax.show._
 import scalaz.syntax.equal._
 
+import shims.{orderToScalaz, showToScalaz}
+
 @Lenses
 final case class DatasourceRef[C](kind: DatasourceType, name: DatasourceName, config: C)
 

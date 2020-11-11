@@ -19,33 +19,30 @@ package quasar.api.datasource
 import slamdata.Predef.{Exception, Option}
 import quasar.Condition
 
-import monocle.macros.Lenses
-import scalaz.Show
-import scalaz.syntax.show._
+import cats.Show
+import cats.implicits._
 
-@Lenses
 final case class DatasourceMeta(
     kind: DatasourceType,
     name: DatasourceName,
     status: Condition[Exception])
 
-object DatasourceMeta extends DatasourceMetaInstances {
+object DatasourceMeta {
   def fromOption(
       kind: DatasourceType,
       name: DatasourceName,
       optErr: Option[Exception])
       : DatasourceMeta =
     DatasourceMeta(kind, name, Condition.optionIso.reverseGet(optErr))
-}
 
-sealed abstract class DatasourceMetaInstances {
   implicit val show: Show[DatasourceMeta] = {
     implicit val exShow: Show[Exception] =
-      Show.shows(_.getMessage)
+      Show.show(_.getMessage)
 
-    Show.shows {
+    Show.show {
       case DatasourceMeta(n, k, s) =>
-        "DatasourceMeta(" + k.shows + ", " + n.shows + ", " + s.shows + ")"
+        "DatasourceMeta(" + k.show + ", " + n.show + ", " + s.show + ")"
     }
   }
+
 }

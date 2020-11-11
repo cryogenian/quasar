@@ -153,7 +153,22 @@ sealed abstract class ConditionInstances extends ConditionInstances0 {
     }
 }
 
-sealed abstract class ConditionInstances0 {
+sealed abstract class ConditionInstances0 extends ConditionCatsInstances {
   implicit def equal[E: Equal]: Equal[Condition[E]] =
     Equal.equalBy(Condition.optionIso.get(_))
+}
+
+sealed abstract class ConditionCatsInstances {
+  import cats._
+  import cats.implicits._
+
+  import Condition.optionIso
+
+  implicit def orderCats[E: Order]: Order[Condition[E]] =
+    Order.by(optionIso.get(_))
+
+  implicit def showCats[E: Show]: Show[Condition[E]] = Show.show {
+      case Condition.Abnormal(e) => "Abnormal(" + e.show + ")"
+      case Condition.Normal()    => "Normal"
+  }
 }

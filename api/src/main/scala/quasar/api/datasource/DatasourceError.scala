@@ -19,15 +19,11 @@ package quasar.api.datasource
 import slamdata.Predef._
 
 import cats.{Eq, Show}
-import cats.instances.option._
-import cats.instances.string._
-import cats.instances.tuple._
-import cats.instances.unit._
-import cats.syntax.show._
+import cats.implicits._
 
 import monocle.Prism
 
-import scalaz.{ISet, NonEmptyList}
+import scalaz.{NonEmptyList}
 
 import shims.{eqToScalaz, equalToCats, showToCats, showToScalaz}
 
@@ -36,7 +32,7 @@ sealed trait DatasourceError[+I, +C] extends Product with Serializable
 object DatasourceError extends DatasourceErrorInstances {
   sealed trait CreateError[+C] extends DatasourceError[Nothing, C]
 
-  final case class DatasourceUnsupported(kind: DatasourceType, supported: ISet[DatasourceType])
+  final case class DatasourceUnsupported(kind: DatasourceType, supported: Set[DatasourceType])
       extends CreateError[Nothing]
 
   final case class DatasourceNameExists(name: DatasourceName)
@@ -82,8 +78,8 @@ object DatasourceError extends DatasourceErrorInstances {
     } (DatasourceNotFound(_))
 
   def datasourceUnsupported[E >: CreateError[Nothing] <: DatasourceError[_, _]]
-      : Prism[E, (DatasourceType, ISet[DatasourceType])] =
-    Prism.partial[E, (DatasourceType, ISet[DatasourceType])] {
+      : Prism[E, (DatasourceType, Set[DatasourceType])] =
+    Prism.partial[E, (DatasourceType, Set[DatasourceType])] {
       case DatasourceUnsupported(k, s) => (k, s)
     } (DatasourceUnsupported.tupled)
 

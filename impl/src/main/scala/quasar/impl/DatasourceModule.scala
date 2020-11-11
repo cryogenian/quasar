@@ -30,14 +30,14 @@ import cats.effect.Sync
 sealed trait DatasourceModule {
   def kind: DatasourceType
 
-  def sanitizeConfig(config: Json): Json
+  def sanitizeConfig(version: Long, config: Json): Json
 
   def minVersion: Long
 
   def migrateConfig[F[_]: Sync](from: Long, to: Long, config: Json)
       : F[Either[ConfigurationError[Json], Json]]
 
-  def reconfigure(original: Json, patch: Json)
+  def reconfigure(version: Long, original: Json, patch: Json)
       : Either[ConfigurationError[Json], (Reconfiguration, Json)]
 }
 
@@ -45,7 +45,8 @@ object DatasourceModule {
   final case class Lightweight(lw: LightweightDatasourceModule) extends DatasourceModule {
     def kind = lw.kind
 
-    def sanitizeConfig(config: Json): Json = lw.sanitizeConfig(config)
+    def sanitizeConfig(version: Long, config: Json): Json =
+      lw.sanitizeConfig(version, config)
 
     def minVersion: Long =
       lw.minVersion
@@ -54,9 +55,9 @@ object DatasourceModule {
         : F[Either[ConfigurationError[Json], Json]] =
       lw.migrateConfig(from, to, config)
 
-    def reconfigure(original: Json, patch: Json)
+    def reconfigure(version: Long, original: Json, patch: Json)
         : Either[ConfigurationError[Json], (Reconfiguration, Json)] =
-      lw.reconfigure(original, patch)
+      lw.reconfigure(version, original, patch)
   }
 
   final case class Heavyweight(hw: HeavyweightDatasourceModule) extends DatasourceModule {
@@ -65,14 +66,15 @@ object DatasourceModule {
     def minVersion: Long =
       hw.minVersion
 
-    def sanitizeConfig(config: Json): Json = hw.sanitizeConfig(config)
+    def sanitizeConfig(version: Long, config: Json): Json =
+      hw.sanitizeConfig(version, config)
 
     def migrateConfig[F[_]: Sync](from: Long, to: Long, config: Json)
         : F[Either[ConfigurationError[Json], Json]] =
       hw.migrateConfig(from, to, config)
 
-    def reconfigure(original: Json, patch: Json)
+    def reconfigure(version: Long, original: Json, patch: Json)
         : Either[ConfigurationError[Json], (Reconfiguration, Json)] =
-      hw.reconfigure(original, patch)
+      hw.reconfigure(version, original, patch)
   }
 }

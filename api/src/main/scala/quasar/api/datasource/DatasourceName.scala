@@ -18,17 +18,14 @@ package quasar.api.datasource
 
 import slamdata.Predef.String
 
-import scalaz.{Order, Show}
-import scalaz.std.string._
+import cats.{Order, Show}
+import cats.implicits._
 
 final case class DatasourceName(value: String)
 
-object DatasourceName extends DatasourceNameInstances
-
-sealed abstract class DatasourceNameInstances {
+object DatasourceName {
   implicit val order: Order[DatasourceName] =
-    Order.orderBy(_.value)
-
+    Order.by(_.value)
   implicit val show: Show[DatasourceName] =
-    Show.shows(_.value)
+    Show.show(_.value)
 }

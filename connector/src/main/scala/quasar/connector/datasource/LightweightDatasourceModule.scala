@@ -38,7 +38,7 @@ import scala.Long
 trait LightweightDatasourceModule {
   def kind: DatasourceType
 
-  def sanitizeConfig(config: Json): Json
+  def sanitizeConfig(version: Long, config: Json): Json
 
   def minVersion: Long =
     kind.version
@@ -46,7 +46,7 @@ trait LightweightDatasourceModule {
   def migrateConfig[F[_]: Sync](from: Long, to: Long, config: Json)
       : F[Either[ConfigurationError[Json], Json]]
 
-  def reconfigure(original: Json, patch: Json)
+  def reconfigure(version: Long, original: Json, patch: Json)
       : Either[ConfigurationError[Json], (Reconfiguration, Json)]
 
   def lightweightDatasource[

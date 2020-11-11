@@ -18,9 +18,9 @@ package quasar.api.datasource
 
 import quasar.Condition
 
-import scala.Exception
-
-import scalaz.{\/, ISet}
+import scala.{Exception, Option, Long}
+import scala.collection.immutable.Set
+import scala.util.Either
 
 /** @tparam F effects
   * @tparam G multple results
@@ -34,7 +34,7 @@ trait Datasources[F[_], G[_], I, C] {
     * set of datasources, returning its identifier or an error if it could
     * not be added.
     */
-  def addDatasource(ref: DatasourceRef[C]): F[CreateError[C] \/ I]
+  def addDatasource(ref: DatasourceRef[C]): F[Either[CreateError[C], I]]
 
   /** Metadata for all datasources. */
   def allDatasourceMetadata: F[G[(I, DatasourceMeta)]]
@@ -42,12 +42,12 @@ trait Datasources[F[_], G[_], I, C] {
   /** Returns the reference to the specified datasource, or an error if
     * it doesn't exist.
     */
-  def datasourceRef(datasourceId: I): F[ExistentialError[I] \/ DatasourceRef[C]]
+  def datasourceRef(datasourceId: I, requestedType: Option[DatasourceType]): F[Either[ExistentialError[I], DatasourceRef[C]]]
 
   /** Returns the status of the specified datasource or an error if it doesn't
     * exist.
     */
-  def datasourceStatus(datasourceId: I): F[ExistentialError[I] \/ Condition[Exception]]
+  def datasourceStatus(datasourceId: I): F[Either[ExistentialError[I], Condition[Exception]]]
 
   /** Removes the specified datasource, making its resources unavailable. */
   def removeDatasource(datasourceId: I): F[Condition[ExistentialError[I]]]
@@ -59,7 +59,7 @@ trait Datasources[F[_], G[_], I, C] {
   /** Replaces the reference to the specified datasource, applying the patch
     * to the existing configuration.
     */
-  def reconfigureDatasource(datasourceId: I, patch: C)
+  def reconfigureDatasource(datasourceId: I, patch: C, patchVersion: Long)
       : F[Condition[DatasourceError[I, C]]]
 
   /** Renames the reference to the specified datasource.
@@ -69,8 +69,8 @@ trait Datasources[F[_], G[_], I, C] {
 
   /** creates temporary cop of the datasource specified by id
     */
-  def copyDatasource(datasourceId: I, modifyName: DatasourceName => DatasourceName): F[DatasourceError[I, C] \/ I]
+  def copyDatasource(datasourceId: I, modifyName: DatasourceName => DatasourceName): F[Either[DatasourceError[I, C], I]]
 
-  /** The set of supported datasource types. */
-  def supportedDatasourceTypes: F[ISet[DatasourceType]]
+  /** The set of supported datasource types with min supported versions. */
+  def supportedDatasourceTypes: F[Set[(DatasourceType, Long)]]
 }

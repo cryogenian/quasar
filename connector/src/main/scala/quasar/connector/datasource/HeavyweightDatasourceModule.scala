@@ -35,7 +35,7 @@ import matryoshka.{BirecursiveT, EqualT, ShowT}
 trait HeavyweightDatasourceModule {
   def kind: DatasourceType
 
-  def sanitizeConfig(config: Json): Json
+  def sanitizeConfig(version: Long, config: Json): Json
 
   def minVersion: Long =
     kind.version
@@ -43,7 +43,7 @@ trait HeavyweightDatasourceModule {
   def migrateConfig[F[_]: Sync](from: Long, to: Long, config: Json)
       : F[Either[ConfigurationError[Json], Json]]
 
-  def reconfigure(original: Json, patch: Json)
+  def reconfigure(version: Long, original: Json, patch: Json)
       : Either[ConfigurationError[Json], (Reconfiguration, Json)]
 
   def heavyweightDatasource[

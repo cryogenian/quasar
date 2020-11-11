@@ -34,7 +34,7 @@ import cats.implicits._
 
 import fs2.Stream
 
-import scalaz.{\/, ISet, Equal}
+import scalaz.{Equal}
 
 import shims.{equalToCats, functorToCats}
 
@@ -53,10 +53,10 @@ private[impl] final class DefaultDatasources[
     byteStores: ByteStores[F, I])
     extends Datasources[F, Stream[F, ?], I, C] {
 
-  def addDatasource(ref: DatasourceRef[C]): F[CreateError[C] \/ I] = for {
+  def addDatasource(ref: DatasourceRef[C]): F[Either[CreateError[C], I]] = for {
     i <- freshId
     c <- addRef[CreateError[C]](i, Reconfiguration.Preserve, ref)
-  } yield Condition.disjunctionIso.get(c).as(i)
+  } yield Condition.eitherIso.get(c).as(i)
 
   def allDatasourceMetadata: F[Stream[F, (I, DatasourceMeta)]] =
     Sync[F].pure(refs.entries.evalMap {
@@ -66,18 +66,24 @@ private[impl] final class DefaultDatasources[
         }
     })
 
-  def datasourceRef(i: I): F[ExistentialError[I] \/ DatasourceRef[C]] =
+  def datasourceRef(i: I, supported: Option[DatasourceType]): F[Either[ExistentialError[I], DatasourceRef[C]]] =
     EitherT(lookupRef[ExistentialError[I]](i))
-      .semiflatMap(modules.sanitizeRef(_))
+      .flatMap({(ref: DatasourceRef[C]) => supported match {
+        case None =>
+          EitherT.pure[F, ExistentialError[I]](ref)
+        case Some(typ) if typ.name =!= ref.kind.name =>
+          EitherT.leftT[F, DatasourceRef[C]](datasourceNotFound[I, ExistentialError[I]](i))
+        case Some(typ) =>
+          modules.migrateRef(typ.version, ref).leftMap(x => datasourceNotFound[I, ExistentialError[I]](i))
+      }})
+      .map(modules.sanitizeRef(_))
       .value
-      .map(\/.fromEither(_))
 
-  def datasourceStatus(i: I): F[ExistentialError[I] \/ Condition[Exception]] =
+  def datasourceStatus(i: I): F[Either[ExistentialError[I], Condition[Exception]]] =
     EitherT(lookupRef[ExistentialError[I]](i))
       .flatMap(_ => EitherT.right[ExistentialError[I]](errors.datasourceError(i)))
       .map(Condition.optionIso.reverseGet(_))
       .value
-      .map(\/.fromEither(_))
 
   def removeDatasource(i: I): F[Condition[ExistentialError[I]]] =
     refs.delete(i).ifM(
@@ -121,11 +127,11 @@ private[impl] final class DefaultDatasources[
     }
   }
 
-  def reconfigureDatasource(datasourceId: I, patch: C)
+  def reconfigureDatasource(datasourceId: I, patch: C, patchVersion: Long)
       : F[Condition[DatasourceError[I, C]]] =
     lookupRef[DatasourceError[I, C]](datasourceId) flatMap {
       case Left(err) => Condition.abnormal(err: DatasourceError[I, C]).pure[F]
-      case Right(ref) => modules.reconfigureRef(ref, patch).value flatMap {
+      case Right(ref) => modules.reconfigureRef(ref, patch, patchVersion).value flatMap {
         case Left(err) =>
           Condition.abnormal(err: DatasourceError[I, C]).pure[F]
 
@@ -141,16 +147,16 @@ private[impl] final class DefaultDatasources[
       case Right(ref) => replaceDatasource(datasourceId, ref.copy(name = name))
     }
 
-  def copyDatasource(datasourceId: I, modifyName: DatasourceName => DatasourceName): F[DatasourceError[I, C] \/ I] = {
+  def copyDatasource(datasourceId: I, modifyName: DatasourceName => DatasourceName): F[Either[DatasourceError[I, C], I]] = {
     val action = for {
       ref <- EitherT(lookupRef[DatasourceError[I, C]](datasourceId))
       ref0 = ref.copy(name = modifyName(ref.name))
-      id <- EitherT(addDatasource(ref0).map(_.toEither)).leftMap(x => x: DatasourceError[I, C])
+      id <- EitherT(addDatasource(ref0)).leftMap(x => x: DatasourceError[I, C])
     } yield id
-    action.value.map(\/.fromEither(_))
+    action.value
   }
 
-  def supportedDatasourceTypes: F[ISet[DatasourceType]] =
+  def supportedDatasourceTypes: F[Set[(DatasourceType, Long)]] =
     modules.supportedTypes
 
   type QDS = QuasarDatasource[T, G, H, R, ResourcePathType]

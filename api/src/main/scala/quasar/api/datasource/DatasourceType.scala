@@ -18,25 +18,16 @@ package quasar.api.datasource
 
 import slamdata.Predef._
 
-import monocle.macros.Lenses
-import scalaz.{Order, Show}
-import scalaz.std.anyVal._
-import scalaz.std.string._
-import scalaz.std.tuple._
-import scalaz.syntax.show._
+import cats.{Order, Show}
+import cats.implicits._
 
-@Lenses
 final case class DatasourceType(name: String, version: Long)
 
-object DatasourceType extends DatasourceTypeInstances
-
-sealed abstract class DatasourceTypeInstances {
+object DatasourceType {
   implicit val order: Order[DatasourceType] =
-    Order.orderBy(t => (t.name, t.version))
-
+    Order.by(t => (t.name, t.version))
   implicit val show: Show[DatasourceType] =
-    Show.shows {
-      case DatasourceType(n, v) =>
-        "DatasourceType(" + n.shows + ", " + v.shows + ")"
+    Show.show { (dt: DatasourceType) =>
+      s"DatasourceType(${dt.name.show}, ${dt.version.show})"
     }
 }

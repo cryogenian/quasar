@@ -43,20 +43,22 @@ import fs2.Stream
 
 import matryoshka.{BirecursiveT, EqualT, ShowT}
 
-import scalaz.ISet
-
 import java.util.UUID
 
 trait DatasourceModules[T[_[_]], F[_], G[_], H[_], I, C, R, P <: ResourcePathType] { self =>
   def create(i: I, ref: DatasourceRef[C])
       : EitherT[Resource[F, ?], CreateError[C], QuasarDatasource[T, G, H, R, P]]
 
-  def sanitizeRef(inp: DatasourceRef[C]): F[DatasourceRef[C]]
+  def sanitizeRef(inp: DatasourceRef[C]): DatasourceRef[C]
 
-  def supportedTypes: F[ISet[DatasourceType]]
+  def supportedTypes: F[Set[(DatasourceType, Long)]]
 
-  def reconfigureRef(original: DatasourceRef[C], patch: C)
+  def reconfigureRef(original: DatasourceRef[C], patch: C, patchVersion: Long)
       : EitherT[F, CreateError[C], (Reconfiguration, DatasourceRef[C])]
+
+  def migrateRef(to: Long, ref: DatasourceRef[C])
+      : EitherT[F, CreateError[C], DatasourceRef[C]]
+
 
   def withMiddleware[HH[_], S, Q <: ResourcePathType](
       f: (I, QuasarDatasource[T, G, H, R, P]) => F[QuasarDatasource[T, G, HH, S, Q]])(
@@ -70,15 +72,19 @@ trait DatasourceModules[T[_[_]], F[_], G[_], H[_], I, C, R, P <: ResourcePathTyp
           EitherT.right(Resource.liftF(f(i, mds)))
         }
 
-      def sanitizeRef(inp: DatasourceRef[C]): F[DatasourceRef[C]] =
+      def sanitizeRef(inp: DatasourceRef[C]): DatasourceRef[C] =
         self.sanitizeRef(inp)
 
-      def supportedTypes: F[ISet[DatasourceType]] =
+      def supportedTypes: F[Set[(DatasourceType, Long)]] =
         self.supportedTypes
 
-      def reconfigureRef(original: DatasourceRef[C], patch: C)
+      def reconfigureRef(original: DatasourceRef[C], patch: C, patchVersion: Long)
           : EitherT[F, CreateError[C], (Reconfiguration, DatasourceRef[C])] =
-        self.reconfigureRef(original, patch)
+        self.reconfigureRef(original, patch, patchVersion)
+
+      def migrateRef(to: Long, ref: DatasourceRef[C])
+          : EitherT[F, CreateError[C], DatasourceRef[C]] =
+        self.migrateRef(to, ref)
     }
 
   def withFinalizer(
@@ -92,15 +98,19 @@ trait DatasourceModules[T[_[_]], F[_], G[_], H[_], I, C, R, P <: ResourcePathTyp
           EitherT.right(Resource.make(mds.pure[F])(x => f(i, x)))
         }
 
-      def sanitizeRef(inp: DatasourceRef[C]): F[DatasourceRef[C]] =
+      def sanitizeRef(inp: DatasourceRef[C]): DatasourceRef[C] =
         self.sanitizeRef(inp)
 
-      def supportedTypes: F[ISet[DatasourceType]] =
+      def supportedTypes: F[Set[(DatasourceType, Long)]] =
         self.supportedTypes
 
-      def reconfigureRef(original: DatasourceRef[C], patch: C)
+      def reconfigureRef(original: DatasourceRef[C], patch: C, patchVersion: Long)
           : EitherT[F, CreateError[C], (Reconfiguration, DatasourceRef[C])] =
-        self.reconfigureRef(original, patch)
+        self.reconfigureRef(original, patch, patchVersion)
+
+      def migrateRef(to: Long, ref: DatasourceRef[C])
+          : EitherT[F, CreateError[C], DatasourceRef[C]] =
+        self.migrateRef(to, ref)
     }
 
   def widenPathType[PP >: P <: ResourcePathType](implicit AF: Monad[F])
@@ -110,15 +120,19 @@ trait DatasourceModules[T[_[_]], F[_], G[_], H[_], I, C, R, P <: ResourcePathTyp
           : EitherT[Resource[F, ?], CreateError[C], QuasarDatasource[T, G, H, R, PP]] =
         self.create(i, ref) map { QuasarDatasource.widenPathType[T, G, H, R, P, PP](_) }
 
-      def sanitizeRef(inp: DatasourceRef[C]): F[DatasourceRef[C]] =
+      def sanitizeRef(inp: DatasourceRef[C]): DatasourceRef[C] =
         self.sanitizeRef(inp)
 
-      def supportedTypes: F[ISet[DatasourceType]] =
+      def supportedTypes: F[Set[(DatasourceType, Long)]] =
         self.supportedTypes
 
-      def reconfigureRef(original: DatasourceRef[C], patch: C)
+      def reconfigureRef(original: DatasourceRef[C], patch: C, patchVersion: Long)
           : EitherT[F, CreateError[C], (Reconfiguration, DatasourceRef[C])] =
-        self.reconfigureRef(original, patch)
+        self.reconfigureRef(original, patch, patchVersion)
+
+      def migrateRef(to: Long, ref: DatasourceRef[C])
+          : EitherT[F, CreateError[C], DatasourceRef[C]] =
+        self.migrateRef(to, ref)
     }
 }
 
@@ -141,8 +155,8 @@ object DatasourceModules {
       ec: ExecutionContext)
       : Modules[T, F, I] = {
 
-    lazy val moduleSet: ISet[DatasourceType] =
-      ISet.fromList(modules.map(_.kind))
+    lazy val moduleSet: Set[(DatasourceType, Long)] =
+      Set(modules.map(x => (x.kind, x.minVersion)):_*)
 
     def findModule(ref: DatasourceRef[Json]): Option[DatasourceModule] =
       modules.find { (m: DatasourceModule) =>
@@ -159,7 +173,7 @@ object DatasourceModules {
             .leftMap((e: ConfigurationError[Json]) => e: CreateError[Json])
             .map((newConf => (m, ref.copy(config = newConf, kind = m.kind))))
         case _ =>
-          EitherT.leftT(DatasourceUnsupported(ref.kind, moduleSet))
+          EitherT.leftT(DatasourceUnsupported(ref.kind, moduleSet.map(_._1)))
       }
 
     new DatasourceModules[T, F, Resource[F, ?], Stream[F, ?], I, Json, QueryResult[F], ResourcePathType.Physical] {
@@ -178,19 +192,44 @@ object DatasourceModules {
           }
         } yield res
 
-      def sanitizeRef(inp: DatasourceRef[Json]): F[DatasourceRef[Json]] =
-        findAndMigrate(inp).value map {
-          case Left(_) => inp.copy(config = jEmptyObject)
-          case Right((module, ref)) => ref.copy(config = module.sanitizeConfig(ref.config))
+      def sanitizeRef(inp: DatasourceRef[Json]): DatasourceRef[Json] =
+        findModule(inp) match {
+          case None => inp.copy(config = jEmptyObject)
+          case Some(mod) => inp.copy(config = mod.sanitizeConfig(inp.kind.version, inp.config))
         }
 
-      def supportedTypes: F[ISet[DatasourceType]] =
+      def supportedTypes: F[Set[(DatasourceType, Long)]] =
         moduleSet.pure[F]
 
-      def reconfigureRef(original: DatasourceRef[Json], patch: Json)
+      def reconfigureRef(ref: DatasourceRef[Json], patch: Json, patchVersion: Long)
           : EitherT[F, CreateError[Json], (Reconfiguration, DatasourceRef[Json])] =
-        findAndMigrate(original).flatMap { case (module, ref) =>
-          EitherT.fromEither(module.reconfigure(ref.config, patch).map(_.map(c => ref.copy(config = c))))
+        findModule(ref) match {
+          case None =>
+            EitherT.leftT(DatasourceUnsupported(ref.kind, moduleSet.map(_._1)))
+          case Some(module) =>
+            // The ref we want to reconfigure might be older than patch version
+            // Opposite situation has no sense
+            // So, we migrate ref to patch version, and then reconfigure it
+            for {
+              newRef <- migrateRef(patchVersion, ref)
+              reconfigured <- {
+                EitherT.fromEither[F](module.reconfigure(patchVersion, newRef.config, patch))
+                  .leftMap((e: ConfigurationError[Json]) => e: CreateError[Json])
+              }
+            } yield reconfigured.map(c => newRef.copy(config = c))
+        }
+
+      def migrateRef(to: Long, ref: DatasourceRef[Json])
+          : EitherT[F, CreateError[Json], DatasourceRef[Json]] =
+        findModule(ref) match {
+          case Some(m) if to === ref.kind.version =>
+            EitherT.pure(ref)
+          case Some(m) if to > m.kind.version =>
+            EitherT.leftT(DatasourceUnsupported(ref.kind, moduleSet.map(_._1)))
+          case Some(m) if to > ref.kind.version =>
+            EitherT(m.migrateConfig(ref.kind.version, to, ref.config))
+              .leftMap((e: ConfigurationError[Json]) => e: CreateError[Json])
+              .map((newConf => ref.copy(config = newConf, kind = ref.kind.copy(version = to))))
         }
     }
   }
